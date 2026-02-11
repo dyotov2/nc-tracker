@@ -47,9 +47,29 @@ const initDatabase = () => {
             db.run(`ALTER TABLE non_conformances ADD COLUMN effectiveness_check_date TEXT`, () => {});
             db.run(`ALTER TABLE non_conformances ADD COLUMN effectiveness_score INTEGER`, () => {});
             db.run(`ALTER TABLE non_conformances ADD COLUMN effectiveness_notes TEXT`, () => {});
-            db.run(`ALTER TABLE non_conformances ADD COLUMN needs_effectiveness_check INTEGER DEFAULT 0`, () => {
-              console.log('Database initialized successfully');
-              resolve();
+            db.run(`ALTER TABLE non_conformances ADD COLUMN needs_effectiveness_check INTEGER DEFAULT 0`, () => {});
+            db.run(`ALTER TABLE non_conformances ADD COLUMN standard_reference TEXT`, () => {});
+            db.run(`ALTER TABLE non_conformances ADD COLUMN clause_reference TEXT`, () => {});
+            db.run(`ALTER TABLE non_conformances ADD COLUMN nc_source TEXT`, () => {});
+            db.run(`ALTER TABLE non_conformances ADD COLUMN root_cause_category TEXT`, () => {
+              // Create RCA comments table
+              db.run(`
+                CREATE TABLE IF NOT EXISTS rca_comments (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  nc_id INTEGER NOT NULL,
+                  author_name TEXT NOT NULL,
+                  comment_text TEXT NOT NULL,
+                  comment_tag TEXT,
+                  created_at TEXT NOT NULL,
+                  FOREIGN KEY (nc_id) REFERENCES non_conformances(id) ON DELETE CASCADE
+                )
+              `, (err) => {
+                if (err) {
+                  console.error('Error creating rca_comments table:', err);
+                }
+                console.log('Database initialized successfully');
+                resolve();
+              });
             });
           });
         }
@@ -82,6 +102,11 @@ const getAllNCs = (filters = {}) => {
     if (filters.department) {
       query += ' AND department = ?';
       params.push(filters.department);
+    }
+
+    if (filters.nc_source) {
+      query += ' AND nc_source = ?';
+      params.push(filters.nc_source);
     }
 
     if (filters.search) {
@@ -134,10 +159,11 @@ const createNC = (data) => {
     const query = `
       INSERT INTO non_conformances (
         type, title, description, date_reported, status, severity, category, department,
-        root_cause, corrective_actions, preventive_actions, responsible_person, responsible_person_email, due_date,
+        root_cause, root_cause_category, corrective_actions, preventive_actions, responsible_person, responsible_person_email, due_date,
         closure_date, effectiveness_check_date, effectiveness_score, effectiveness_notes,
-        needs_effectiveness_check, notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        needs_effectiveness_check, notes, standard_reference, clause_reference, nc_source,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const params = [
@@ -150,6 +176,7 @@ const createNC = (data) => {
       data.category || null,
       data.department || null,
       data.root_cause || null,
+      data.root_cause_category || null,
       data.corrective_actions || null,
       data.preventive_actions || null,
       data.responsible_person || null,
@@ -161,6 +188,9 @@ const createNC = (data) => {
       data.effectiveness_notes || null,
       needsEffectivenessCheck,
       data.notes || null,
+      data.standard_reference || null,
+      data.clause_reference || null,
+      data.nc_source || null,
       now,
       now
     ];
@@ -279,7 +309,19 @@ const getStatistics = () => {
               return;
             }
             stats.timeline = rows;
-            resolve(stats);
+
+            // Get NC source breakdown
+            db.all('SELECT nc_source, COUNT(*) as count FROM non_conformances WHERE nc_source IS NOT NULL GROUP BY nc_source', [], (err, rows) => {
+              if (err) {
+                reject(err);
+                return;
+              }
+              stats.bySource = rows.reduce((acc, row) => {
+                acc[row.nc_source] = row.count;
+                return acc;
+              }, {});
+              resolve(stats);
+            });
           });
         });
       });
