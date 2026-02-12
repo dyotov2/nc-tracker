@@ -351,6 +351,251 @@ const getNeedingEffectivenessCheck = () => {
   });
 };
 
+// Get analytics data
+const getAnalytics = () => {
+  return new Promise((resolve, reject) => {
+    const analytics = {};
+
+    // 1a: Average days to close
+    db.get(
+      `SELECT AVG(julianday(closure_date) - julianday(date_reported)) as avg_days_to_close
+       FROM non_conformances
+       WHERE status = 'Closed' AND closure_date IS NOT NULL AND date_reported IS NOT NULL`,
+      [],
+      (err, row) => {
+        if (err) { reject(err); return; }
+        analytics.avgDaysToClose = row.avg_days_to_close
+          ? Math.round(row.avg_days_to_close * 10) / 10
+          : null;
+
+        // 1b: Overdue NCs count
+        db.get(
+          `SELECT COUNT(*) as overdue_count FROM non_conformances
+           WHERE status != 'Closed' AND due_date IS NOT NULL AND due_date < date('now')`,
+          [],
+          (err, row) => {
+            if (err) { reject(err); return; }
+            analytics.overdueCount = row.overdue_count;
+
+            // 1c: SLA compliance rate
+            db.get(
+              `SELECT
+                COUNT(CASE WHEN closure_date <= due_date THEN 1 END) as on_time,
+                COUNT(*) as total_with_due
+               FROM non_conformances
+               WHERE status = 'Closed' AND closure_date IS NOT NULL AND due_date IS NOT NULL`,
+              [],
+              (err, row) => {
+                if (err) { reject(err); return; }
+                analytics.slaComplianceRate = row.total_with_due > 0
+                  ? Math.round((row.on_time / row.total_with_due) * 100)
+                  : null;
+
+                // 1d: Average effectiveness score
+                db.get(
+                  `SELECT AVG(effectiveness_score) as avg_effectiveness
+                   FROM non_conformances
+                   WHERE effectiveness_score IS NOT NULL AND effectiveness_score > 0`,
+                  [],
+                  (err, row) => {
+                    if (err) { reject(err); return; }
+                    analytics.avgEffectiveness = row.avg_effectiveness
+                      ? Math.round(row.avg_effectiveness * 10) / 10
+                      : null;
+
+                    // 2: Department breakdown
+                    db.all(
+                      `SELECT
+                        department,
+                        COUNT(*) as total,
+                        SUM(CASE WHEN status != 'Closed' THEN 1 ELSE 0 END) as open_count,
+                        AVG(CASE
+                          WHEN status = 'Closed' AND closure_date IS NOT NULL AND date_reported IS NOT NULL
+                          THEN julianday(closure_date) - julianday(date_reported)
+                          ELSE NULL
+                        END) as avg_days_to_close
+                       FROM non_conformances
+                       WHERE department IS NOT NULL AND department != ''
+                       GROUP BY department
+                       ORDER BY total DESC`,
+                      [],
+                      (err, rows) => {
+                        if (err) { reject(err); return; }
+                        analytics.departmentBreakdown = rows.map(r => ({
+                          department: r.department,
+                          total: r.total,
+                          openCount: r.open_count,
+                          avgDaysToClose: r.avg_days_to_close
+                            ? Math.round(r.avg_days_to_close * 10) / 10
+                            : null
+                        }));
+
+                        // 3: Root cause categories
+                        db.all(
+                          `SELECT root_cause_category, COUNT(*) as count
+                           FROM non_conformances
+                           WHERE root_cause_category IS NOT NULL AND root_cause_category != ''
+                           GROUP BY root_cause_category
+                           ORDER BY count DESC`,
+                          [],
+                          (err, rows) => {
+                            if (err) { reject(err); return; }
+                            analytics.rootCauseCategories = rows.map(r => ({
+                              category: r.root_cause_category,
+                              count: r.count
+                            }));
+
+                            // 4: NC source breakdown
+                            db.all(
+                              `SELECT nc_source, COUNT(*) as count
+                               FROM non_conformances
+                               WHERE nc_source IS NOT NULL AND nc_source != ''
+                               GROUP BY nc_source
+                               ORDER BY count DESC`,
+                              [],
+                              (err, rows) => {
+                                if (err) { reject(err); return; }
+                                analytics.ncSourceBreakdown = rows.reduce((acc, r) => {
+                                  acc[r.nc_source] = r.count;
+                                  return acc;
+                                }, {});
+
+                                // 5: Closure time distribution
+                                db.all(
+                                  `SELECT
+                                    CASE
+                                      WHEN days < 7 THEN '< 7 days'
+                                      WHEN days >= 7 AND days < 14 THEN '7-14 days'
+                                      WHEN days >= 14 AND days < 30 THEN '14-30 days'
+                                      WHEN days >= 30 AND days < 60 THEN '30-60 days'
+                                      ELSE '60+ days'
+                                    END as bucket,
+                                    COUNT(*) as count
+                                   FROM (
+                                     SELECT julianday(closure_date) - julianday(date_reported) as days
+                                     FROM non_conformances
+                                     WHERE status = 'Closed'
+                                       AND closure_date IS NOT NULL
+                                       AND date_reported IS NOT NULL
+                                   )
+                                   GROUP BY bucket
+                                   ORDER BY
+                                     CASE bucket
+                                       WHEN '< 7 days' THEN 1
+                                       WHEN '7-14 days' THEN 2
+                                       WHEN '14-30 days' THEN 3
+                                       WHEN '30-60 days' THEN 4
+                                       WHEN '60+ days' THEN 5
+                                     END`,
+                                  [],
+                                  (err, rows) => {
+                                    if (err) { reject(err); return; }
+                                    const bucketOrder = ['< 7 days', '7-14 days', '14-30 days', '30-60 days', '60+ days'];
+                                    const bucketMap = rows.reduce((acc, r) => { acc[r.bucket] = r.count; return acc; }, {});
+                                    analytics.closureDistribution = bucketOrder.map(b => ({
+                                      bucket: b,
+                                      count: bucketMap[b] || 0
+                                    }));
+
+                                    // 6: Overdue NCs table
+                                    db.all(
+                                      `SELECT
+                                        id, title, severity, department, responsible_person, due_date,
+                                        CAST(julianday('now') - julianday(due_date) AS INTEGER) as days_overdue
+                                       FROM non_conformances
+                                       WHERE status != 'Closed'
+                                         AND due_date IS NOT NULL
+                                         AND due_date < date('now')
+                                       ORDER BY days_overdue DESC`,
+                                      [],
+                                      (err, rows) => {
+                                        if (err) { reject(err); return; }
+                                        analytics.overdueNCs = rows;
+                                        resolve(analytics);
+                                      }
+                                    );
+                                  }
+                                );
+                              }
+                            );
+                          }
+                        );
+                      }
+                    );
+                  }
+                );
+              }
+            );
+          }
+        );
+      }
+    );
+  });
+};
+
+// Get comments for an NC (oldest first)
+const getCommentsByNCId = (ncId) => {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT * FROM rca_comments WHERE nc_id = ? ORDER BY created_at ASC',
+      [ncId],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      }
+    );
+  });
+};
+
+// Create new comment
+const createComment = (data) => {
+  return new Promise((resolve, reject) => {
+    const now = new Date().toISOString();
+
+    const query = `
+      INSERT INTO rca_comments (nc_id, author_name, comment_text, comment_tag, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `;
+
+    const params = [
+      data.nc_id,
+      data.author_name,
+      data.comment_text,
+      data.comment_tag || null,
+      now
+    ];
+
+    db.run(query, params, function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve({
+          id: this.lastID,
+          nc_id: data.nc_id,
+          author_name: data.author_name,
+          comment_text: data.comment_text,
+          comment_tag: data.comment_tag || null,
+          created_at: now
+        });
+      }
+    });
+  });
+};
+
+// Get comment count for an NC
+const getCommentCountByNCId = (ncId) => {
+  return new Promise((resolve, reject) => {
+    db.get(
+      'SELECT COUNT(*) as count FROM rca_comments WHERE nc_id = ?',
+      [ncId],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row.count);
+      }
+    );
+  });
+};
+
 module.exports = {
   db,
   initDatabase,
@@ -360,5 +605,9 @@ module.exports = {
   updateNC,
   deleteNC,
   getStatistics,
-  getNeedingEffectivenessCheck
+  getNeedingEffectivenessCheck,
+  getAnalytics,
+  getCommentsByNCId,
+  createComment,
+  getCommentCountByNCId
 };

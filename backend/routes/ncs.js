@@ -33,6 +33,17 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+// Get analytics data
+router.get('/analytics', async (req, res) => {
+  try {
+    const analytics = await db.getAnalytics();
+    res.json(analytics);
+  } catch (error) {
+    console.error('Error fetching analytics:', error);
+    res.status(500).json({ error: 'Failed to fetch analytics data' });
+  }
+});
+
 // Get NCs needing effectiveness check
 router.get('/effectiveness-checks', async (req, res) => {
   try {
@@ -114,6 +125,69 @@ router.put('/:id', async (req, res) => {
   } catch (error) {
     console.error('Error updating NC:', error);
     res.status(500).json({ error: 'Failed to update non-conformance' });
+  }
+});
+
+// Get comments for an NC
+router.get('/:id/comments', async (req, res) => {
+  try {
+    const comments = await db.getCommentsByNCId(req.params.id);
+    res.json(comments);
+  } catch (error) {
+    console.error('Error fetching comments:', error);
+    res.status(500).json({ error: 'Failed to fetch comments' });
+  }
+});
+
+// Create comment for an NC
+router.post('/:id/comments', async (req, res) => {
+  try {
+    const { author_name, comment_text, comment_tag } = req.body;
+
+    if (!author_name || !comment_text) {
+      return res.status(400).json({ error: 'Author name and comment text are required' });
+    }
+
+    const validTags = [
+      'Containment Action',
+      'Root Cause Finding',
+      'Corrective Action',
+      'Verification',
+      'General Note'
+    ];
+
+    if (comment_tag && !validTags.includes(comment_tag)) {
+      return res.status(400).json({ error: 'Invalid comment tag' });
+    }
+
+    const nc = await db.getNCById(req.params.id);
+    if (!nc) {
+      return res.status(404).json({ error: 'Non-conformance not found' });
+    }
+
+    const commentData = {
+      nc_id: req.params.id,
+      author_name: author_name.trim(),
+      comment_text: comment_text.trim(),
+      comment_tag: comment_tag || null
+    };
+
+    const comment = await db.createComment(commentData);
+    res.status(201).json(comment);
+  } catch (error) {
+    console.error('Error creating comment:', error);
+    res.status(500).json({ error: 'Failed to create comment' });
+  }
+});
+
+// Get comment count for an NC
+router.get('/:id/comments/count', async (req, res) => {
+  try {
+    const count = await db.getCommentCountByNCId(req.params.id);
+    res.json({ count });
+  } catch (error) {
+    console.error('Error fetching comment count:', error);
+    res.status(500).json({ error: 'Failed to fetch comment count' });
   }
 });
 

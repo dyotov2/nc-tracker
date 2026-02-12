@@ -152,3 +152,133 @@ export function TrendChart({ data }) {
 
   return <Line data={chartData} options={options} />;
 }
+
+export function DepartmentChart({ data }) {
+  const chartData = {
+    labels: data.map(d => d.department),
+    datasets: [{
+      label: 'NC Count',
+      data: data.map(d => d.total),
+      backgroundColor: 'rgba(59, 130, 246, 0.8)',
+      borderColor: 'rgb(59, 130, 246)',
+      borderWidth: 1
+    }]
+  };
+
+  const options = {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      title: { display: true, text: 'NCs by Department' }
+    },
+    scales: {
+      x: { beginAtZero: true, ticks: { stepSize: 1 } }
+    }
+  };
+
+  return <Bar data={chartData} options={options} />;
+}
+
+export function RootCauseChart({ data }) {
+  const colors = [
+    'rgba(239, 68, 68, 0.8)',
+    'rgba(249, 115, 22, 0.8)',
+    'rgba(251, 191, 36, 0.8)',
+    'rgba(34, 197, 94, 0.8)',
+    'rgba(59, 130, 246, 0.8)',
+    'rgba(139, 92, 246, 0.8)',
+    'rgba(236, 72, 153, 0.8)',
+    'rgba(156, 163, 175, 0.8)'
+  ];
+
+  const chartData = {
+    labels: data.map(d => d.category),
+    datasets: [{
+      label: 'Count',
+      data: data.map(d => d.count),
+      backgroundColor: data.map((_, i) => colors[i % colors.length]),
+      borderWidth: 1
+    }]
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      title: { display: true, text: 'Root Cause Categories' }
+    },
+    scales: {
+      y: { beginAtZero: true, ticks: { stepSize: 1 } }
+    }
+  };
+
+  return <Bar data={chartData} options={options} />;
+}
+
+export function SourceChart({ data }) {
+  const colors = [
+    'rgba(59, 130, 246, 0.8)',
+    'rgba(34, 197, 94, 0.8)',
+    'rgba(251, 191, 36, 0.8)',
+    'rgba(249, 115, 22, 0.8)',
+    'rgba(239, 68, 68, 0.8)',
+    'rgba(139, 92, 246, 0.8)',
+    'rgba(236, 72, 153, 0.8)',
+    'rgba(156, 163, 175, 0.8)'
+  ];
+
+  const chartData = {
+    labels: Object.keys(data),
+    datasets: [{
+      data: Object.values(data),
+      backgroundColor: Object.keys(data).map((_, i) => colors[i % colors.length]),
+      borderWidth: 1
+    }]
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'bottom' },
+      title: { display: true, text: 'NC Source Distribution' }
+    }
+  };
+
+  return <Doughnut data={chartData} options={options} />;
+}
+
+export function ClosureDistributionChart({ data }) {
+  const chartData = {
+    labels: data.map(d => d.bucket),
+    datasets: [{
+      label: 'NCs Closed',
+      data: data.map(d => d.count),
+      backgroundColor: [
+        'rgba(34, 197, 94, 0.8)',
+        'rgba(59, 130, 246, 0.8)',
+        'rgba(251, 191, 36, 0.8)',
+        'rgba(249, 115, 22, 0.8)',
+        'rgba(239, 68, 68, 0.8)'
+      ],
+      borderWidth: 1
+    }]
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      title: { display: true, text: 'Closure Time Distribution' }
+    },
+    scales: {
+      y: { beginAtZero: true, ticks: { stepSize: 1 } }
+    }
+  };
+
+  return <Bar data={chartData} options={options} />;
+}

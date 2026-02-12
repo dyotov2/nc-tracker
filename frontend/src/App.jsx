@@ -5,6 +5,7 @@ import KanbanBoard from './components/KanbanBoard';
 import NCList from './components/NCList';
 import NCForm from './components/NCForm';
 import NCDetail from './components/NCDetail';
+import Analytics from './components/Analytics';
 import DarkModeToggle from './components/DarkModeToggle';
 import { ToastProvider } from './components/Toast';
 
@@ -46,6 +47,12 @@ function App() {
                     >
                       Create NC
                     </Link>
+                    <Link
+                      to="/analytics"
+                      className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                    >
+                      Analytics
+                    </Link>
                   </div>
                 </div>
                 <div className="flex items-center">
@@ -64,6 +71,7 @@ function App() {
               <Route path="/ncs/new" element={<NCForm />} />
               <Route path="/ncs/:id" element={<NCDetail />} />
               <Route path="/ncs/:id/edit" element={<NCForm />} />
+              <Route path="/analytics" element={<Analytics />} />
             </Routes>
           </main>
         </div>

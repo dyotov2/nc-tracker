@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useToast } from './Toast';
+import CommentThread from './CommentThread';
 
 function NCDetail() {
   const { id } = useParams();
@@ -352,6 +353,11 @@ function NCDetail() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Comment Thread Section */}
+        <div className="px-6 py-6 border-t border-gray-200">
+          <CommentThread ncId={id} />
         </div>
 
         {/* Status Actions */}
